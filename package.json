@@ -1,0 +1,16 @@
+{
+  "name": "obsidian-refdaily",
+  "version": "0.1.0",
+  "description": "RefDaily - Sync your research papers, reports, and daily digests",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc -noEmit && esbuild src/main.ts --bundle --external:obsidian --format=cjs --outfile=main.js",
+    "dev": "tsc -noEmit && esbuild src/main.ts --bundle --external:obsidian --format=cjs --outfile=main.js --sourcemap"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.21.0",
+    "obsidian": "latest",
+    "typescript": "^5.5.0"
+  }
+}
