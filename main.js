@@ -44,11 +44,101 @@ var RefDailySettingTab = class extends import_obsidian.PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
   }
+  /**
+   * Settings, described rather than drawn.
+   *
+   * Obsidian 1.13 builds the tab from this and, more to the point, indexes it:
+   * a tab that only implements display() is invisible to the settings search,
+   * so someone looking for "sync interval" never finds ours. display() stays
+   * below for older versions, which is the dual-support pattern the docs
+   * describe — the two have to say the same thing.
+   */
+  getSettingDefinitions() {
+    const lastSync = this.plugin.settings.lastSyncTime ? new Date(this.plugin.settings.lastSyncTime).toLocaleString() : "Never";
+    return [
+      {
+        type: "group",
+        heading: "Connection",
+        items: [
+          {
+            name: "API token",
+            desc: "Generate one at Settings > Integrations on refdaily.com.",
+            control: { type: "text", key: "apiToken", placeholder: "Paste your token here" }
+          },
+          {
+            name: "Server",
+            desc: "Leave this alone unless you are running your own RefDaily.",
+            control: { type: "text", key: "apiUrl", placeholder: "https://refdaily.com" }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Sync",
+        items: [
+          {
+            name: "Auto-sync",
+            desc: "Sync on a schedule while Obsidian is open.",
+            control: { type: "toggle", key: "enableAutoSync" }
+          },
+          {
+            name: "Interval",
+            desc: "Minutes between syncs.",
+            control: { type: "number", key: "syncInterval", min: 5, max: 1440 }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Vault folders",
+        items: [
+          { name: "Papers", control: { type: "folder", key: "papersFolder" } },
+          { name: "Daily digests", control: { type: "folder", key: "dailyFolder" } },
+          { name: "Weekly reviews", control: { type: "folder", key: "weeklyFolder" } },
+          { name: "Monthly reviews", control: { type: "folder", key: "monthlyFolder" } },
+          { name: "Reports", control: { type: "folder", key: "reportsFolder" } }
+        ]
+      },
+      {
+        type: "group",
+        heading: "Status",
+        items: [
+          {
+            name: "Sync now",
+            desc: `Last sync: ${lastSync}`,
+            action: () => {
+              void this.plugin.runSync();
+            }
+          }
+        ]
+      }
+    ];
+  }
+  /**
+   * Values arrive from the declarative controls here.
+   *
+   * Two of them change how the plugin behaves rather than just what it stores,
+   * so the running timer is rebuilt after they land; without this, turning
+   * auto-sync on does nothing until the next restart.
+   */
+  async setControlValue(key, value) {
+    const settings = this.plugin.settings;
+    settings[key] = typeof value === "string" ? value.trim() : value;
+    if (key === "apiUrl" && typeof settings[key] === "string") {
+      settings[key] = settings[key].replace(/\/+$/, "");
+    }
+    await this.plugin.saveSettings();
+    if (key === "enableAutoSync" || key === "syncInterval") {
+      this.plugin.resetSyncInterval();
+    }
+  }
+  getControlValue(key) {
+    return this.plugin.settings[key];
+  }
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "RefDaily Settings" });
-    containerEl.createEl("h3", { text: "Connection" });
+    new import_obsidian.Setting(containerEl).setName("Connection").setHeading();
     new import_obsidian.Setting(containerEl).setName("API Token").setDesc(
       "Your RefDaily API token. Generate one at Settings > Integrations on refdaily.com."
     ).addText(
@@ -63,7 +153,7 @@ var RefDailySettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    containerEl.createEl("h3", { text: "Sync" });
+    new import_obsidian.Setting(containerEl).setName("Sync").setHeading();
     new import_obsidian.Setting(containerEl).setName("Auto-sync").setDesc("Automatically sync papers and digests on a schedule.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.enableAutoSync).onChange(async (value) => {
         this.plugin.settings.enableAutoSync = value;
@@ -81,7 +171,7 @@ var RefDailySettingTab = class extends import_obsidian.PluginSettingTab {
         }
       })
     );
-    containerEl.createEl("h3", { text: "Vault Folders" });
+    new import_obsidian.Setting(containerEl).setName("Vault Folders").setHeading();
     new import_obsidian.Setting(containerEl).setName("Papers folder").setDesc("Where synced paper notes are saved.").addText(
       (text) => text.setPlaceholder("20_References/21_Papers").setValue(this.plugin.settings.papersFolder).onChange(async (value) => {
         this.plugin.settings.papersFolder = value.trim();
@@ -112,22 +202,28 @@ var RefDailySettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    containerEl.createEl("h3", { text: "Status" });
+    new import_obsidian.Setting(containerEl).setName("Status").setHeading();
     const lastSync = this.plugin.settings.lastSyncTime ? new Date(this.plugin.settings.lastSyncTime).toLocaleString() : "Never";
     new import_obsidian.Setting(containerEl).setName("Last sync").setDesc(lastSync).addButton(
-      (btn) => btn.setButtonText("Sync now").onClick(async () => {
-        btn.setButtonText("Syncing...");
-        btn.setDisabled(true);
-        try {
-          await this.plugin.runSync();
-          btn.setButtonText("Done!");
-          setTimeout(() => this.display(), 1500);
-        } catch {
-          btn.setButtonText("Failed");
-        } finally {
-          setTimeout(() => btn.setDisabled(false), 2e3);
-        }
-      })
+      (btn) => (
+        // onClick wants a void return. The work is launched rather than
+        // returned, and `void` says that is deliberate.
+        btn.setButtonText("Sync now").onClick(() => {
+          void (async () => {
+            btn.setButtonText("Syncing...");
+            btn.setDisabled(true);
+            try {
+              await this.plugin.runSync();
+              btn.setButtonText("Done!");
+              window.setTimeout(() => this.display(), 1500);
+            } catch {
+              btn.setButtonText("Failed");
+            } finally {
+              window.setTimeout(() => btn.setDisabled(false), 2e3);
+            }
+          })();
+        })
+      )
     );
   }
 };
@@ -657,18 +753,18 @@ var RefDailyPlugin = class extends import_obsidian5.Plugin {
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new RefDailySettingTab(this.app, this));
-    this.addRibbonIcon("refresh-cw", "RefDaily: Sync now", async () => {
-      await this.runSync();
+    this.addRibbonIcon("refresh-cw", "RefDaily: Sync now", () => {
+      void this.runSync();
     });
     this.addCommand({
-      id: "refdaily-sync-now",
+      id: "sync-now",
       name: "Sync now",
-      callback: async () => {
-        await this.runSync();
+      callback: () => {
+        void this.runSync();
       }
     });
     this.addCommand({
-      id: "refdaily-open-dashboard",
+      id: "open-dashboard",
       name: "Open dashboard",
       callback: () => {
         const url = this.settings.apiUrl || "https://refdaily.com";
@@ -682,7 +778,7 @@ var RefDailyPlugin = class extends import_obsidian5.Plugin {
       this.app.workspace.onLayoutReady(() => {
         window.setTimeout(() => {
           if (this.settings.enableAutoSync && this.settings.apiToken) {
-            this.runSync();
+            void this.runSync();
           }
         }, 1e4);
       });
@@ -712,10 +808,9 @@ var RefDailyPlugin = class extends import_obsidian5.Plugin {
       this.settings.lastSyncTime = (/* @__PURE__ */ new Date()).toISOString();
       await this.saveSettings();
       this.updateStatusBar();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      new import_obsidian5.Notice(`RefDaily sync error: ${msg}`);
-      console.error("[RefDaily] Sync error:", e);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian5.Notice(`RefDaily sync error: ${message}`);
     }
   }
   // ── Auto-sync interval management ──
@@ -723,9 +818,9 @@ var RefDailyPlugin = class extends import_obsidian5.Plugin {
     this.clearSyncInterval();
     if (!this.settings.enableAutoSync) return;
     const intervalMs = Math.max(this.settings.syncInterval, 5) * 60 * 1e3;
-    this.syncIntervalId = window.setInterval(async () => {
+    this.syncIntervalId = window.setInterval(() => {
       if (this.settings.apiToken) {
-        await this.runSync();
+        void this.runSync();
       }
     }, intervalMs);
     this.registerInterval(this.syncIntervalId);

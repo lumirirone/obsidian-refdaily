@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
+import type { SettingDefinitionItem } from "obsidian";
 import type RefDailyPlugin from "./main";
 
 export interface RefDailySettings {
@@ -35,14 +36,110 @@ export class RefDailySettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /**
+   * Settings, described rather than drawn.
+   *
+   * Obsidian 1.13 builds the tab from this and, more to the point, indexes it:
+   * a tab that only implements display() is invisible to the settings search,
+   * so someone looking for "sync interval" never finds ours. display() stays
+   * below for older versions, which is the dual-support pattern the docs
+   * describe — the two have to say the same thing.
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const lastSync = this.plugin.settings.lastSyncTime
+      ? new Date(this.plugin.settings.lastSyncTime).toLocaleString()
+      : "Never";
+
+    return [
+      {
+        type: "group",
+        heading: "Connection",
+        items: [
+          {
+            name: "API token",
+            desc: "Generate one at Settings > Integrations on refdaily.com.",
+            control: { type: "text", key: "apiToken", placeholder: "Paste your token here" },
+          },
+          {
+            name: "Server",
+            desc: "Leave this alone unless you are running your own RefDaily.",
+            control: { type: "text", key: "apiUrl", placeholder: "https://refdaily.com" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Sync",
+        items: [
+          {
+            name: "Auto-sync",
+            desc: "Sync on a schedule while Obsidian is open.",
+            control: { type: "toggle", key: "enableAutoSync" },
+          },
+          {
+            name: "Interval",
+            desc: "Minutes between syncs.",
+            control: { type: "number", key: "syncInterval", min: 5, max: 1440 },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Vault folders",
+        items: [
+          { name: "Papers", control: { type: "folder", key: "papersFolder" } },
+          { name: "Daily digests", control: { type: "folder", key: "dailyFolder" } },
+          { name: "Weekly reviews", control: { type: "folder", key: "weeklyFolder" } },
+          { name: "Monthly reviews", control: { type: "folder", key: "monthlyFolder" } },
+          { name: "Reports", control: { type: "folder", key: "reportsFolder" } },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Status",
+        items: [
+          {
+            name: "Sync now",
+            desc: `Last sync: ${lastSync}`,
+            action: () => {
+              void this.plugin.runSync();
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  /**
+   * Values arrive from the declarative controls here.
+   *
+   * Two of them change how the plugin behaves rather than just what it stores,
+   * so the running timer is rebuilt after they land; without this, turning
+   * auto-sync on does nothing until the next restart.
+   */
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.settings as unknown as Record<string, unknown>;
+    // Paths and URLs arrive with whatever whitespace was typed around them.
+    settings[key] = typeof value === "string" ? value.trim() : value;
+    if (key === "apiUrl" && typeof settings[key] === "string") {
+      settings[key] = (settings[key] as string).replace(/\/+$/, "");
+    }
+    await this.plugin.saveSettings();
+    if (key === "enableAutoSync" || key === "syncInterval") {
+      this.plugin.resetSyncInterval();
+    }
+  }
+
+  getControlValue(key: string): unknown {
+    return (this.plugin.settings as unknown as Record<string, unknown>)[key];
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "RefDaily Settings" });
-
     // --- Connection ---
-    containerEl.createEl("h3", { text: "Connection" });
+    new Setting(containerEl).setName("Connection").setHeading();
 
     new Setting(containerEl)
       .setName("API Token")
@@ -73,7 +170,7 @@ export class RefDailySettingTab extends PluginSettingTab {
       );
 
     // --- Sync ---
-    containerEl.createEl("h3", { text: "Sync" });
+    new Setting(containerEl).setName("Sync").setHeading();
 
     new Setting(containerEl)
       .setName("Auto-sync")
@@ -106,7 +203,7 @@ export class RefDailySettingTab extends PluginSettingTab {
       );
 
     // --- Folders ---
-    containerEl.createEl("h3", { text: "Vault Folders" });
+    new Setting(containerEl).setName("Vault Folders").setHeading();
 
     new Setting(containerEl)
       .setName("Papers folder")
@@ -174,7 +271,7 @@ export class RefDailySettingTab extends PluginSettingTab {
       );
 
     // --- Status ---
-    containerEl.createEl("h3", { text: "Status" });
+    new Setting(containerEl).setName("Status").setHeading();
 
     const lastSync = this.plugin.settings.lastSyncTime
       ? new Date(this.plugin.settings.lastSyncTime).toLocaleString()
@@ -184,19 +281,23 @@ export class RefDailySettingTab extends PluginSettingTab {
       .setName("Last sync")
       .setDesc(lastSync)
       .addButton((btn) =>
-        btn.setButtonText("Sync now").onClick(async () => {
-          btn.setButtonText("Syncing...");
-          btn.setDisabled(true);
-          try {
-            await this.plugin.runSync();
-            btn.setButtonText("Done!");
-            // Refresh the display to show updated last-sync time
-            setTimeout(() => this.display(), 1500);
-          } catch {
-            btn.setButtonText("Failed");
-          } finally {
-            setTimeout(() => btn.setDisabled(false), 2000);
-          }
+        // onClick wants a void return. The work is launched rather than
+        // returned, and `void` says that is deliberate.
+        btn.setButtonText("Sync now").onClick(() => {
+          void (async () => {
+            btn.setButtonText("Syncing...");
+            btn.setDisabled(true);
+            try {
+              await this.plugin.runSync();
+              btn.setButtonText("Done!");
+              // Redraw so the last-sync time above is not left stale.
+              window.setTimeout(() => this.display(), 1500);
+            } catch {
+              btn.setButtonText("Failed");
+            } finally {
+              window.setTimeout(() => btn.setDisabled(false), 2000);
+            }
+          })();
         })
       );
   }

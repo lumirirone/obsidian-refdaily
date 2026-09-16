@@ -1,7 +1,7 @@
 {
   "id": "refdaily",
   "name": "RefDaily",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.5.0",
   "description": "Sync papers, daily digests and research reports from RefDaily into your vault as Markdown notes.",
   "author": "Chaeseung Lee",

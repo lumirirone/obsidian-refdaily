@@ -16,21 +16,21 @@ export default class RefDailyPlugin extends Plugin {
     this.addSettingTab(new RefDailySettingTab(this.app, this));
 
     // Add ribbon icon for manual sync
-    this.addRibbonIcon("refresh-cw", "RefDaily: Sync now", async () => {
-      await this.runSync();
+    this.addRibbonIcon("refresh-cw", "RefDaily: Sync now", () => {
+      void this.runSync();
     });
 
     // Register commands
     this.addCommand({
-      id: "refdaily-sync-now",
+      id: "sync-now",
       name: "Sync now",
-      callback: async () => {
-        await this.runSync();
+      callback: () => {
+        void this.runSync();
       },
     });
 
     this.addCommand({
-      id: "refdaily-open-dashboard",
+      id: "open-dashboard",
       name: "Open dashboard",
       callback: () => {
         const url = this.settings.apiUrl || "https://refdaily.com";
@@ -51,7 +51,7 @@ export default class RefDailyPlugin extends Plugin {
         // Wait 10 seconds after layout is ready before first sync
         window.setTimeout(() => {
           if (this.settings.enableAutoSync && this.settings.apiToken) {
-            this.runSync();
+            void this.runSync();
           }
         }, 10_000);
       });
@@ -90,10 +90,9 @@ export default class RefDailyPlugin extends Plugin {
       this.settings.lastSyncTime = new Date().toISOString();
       await this.saveSettings();
       this.updateStatusBar();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      new Notice(`RefDaily sync error: ${msg}`);
-      console.error("[RefDaily] Sync error:", e);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`RefDaily sync error: ${message}`);
     }
   }
 
@@ -105,9 +104,9 @@ export default class RefDailyPlugin extends Plugin {
     if (!this.settings.enableAutoSync) return;
 
     const intervalMs = Math.max(this.settings.syncInterval, 5) * 60 * 1000;
-    this.syncIntervalId = window.setInterval(async () => {
+    this.syncIntervalId = window.setInterval(() => {
       if (this.settings.apiToken) {
-        await this.runSync();
+        void this.runSync();
       }
     }, intervalMs);
 
