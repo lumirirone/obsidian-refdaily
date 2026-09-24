@@ -1,10 +1,5 @@
-Addresses everything the directory's automated review raised.
+Security fixes for notes written from synced data.
 
-- Settings headings now come from the Setting API instead of raw heading elements, so the tab matches every other plugin's
-- Settings are also declared through the 1.13 declarative API, which is what makes them findable in Obsidian's settings search; the imperative tab stays for older versions
-- Command ids no longer repeat the plugin id, which Obsidian adds itself
-- Folder fields use the folder picker rather than free text
-- Timers use `window.setTimeout` so they behave in pop-out windows
-- Background syncs are explicitly fire-and-forget rather than promises nobody waits on, and sync errors are narrowed instead of caught as `any`
-- Folder paths are normalised before they reach the vault
-- Releases are now built, attested and published by CI, so the shipped `main.js` can be traced to this repository and commit
+- Frontmatter values are written as quoted JSON strings, so a quote or line break in an author, tag or venue (which can come from another user through a shared paper) can no longer end the value and add keys of its own
+- Fenced code (``` and ~~~) and inline `$=` in abstracts and summaries are escaped, so synced text cannot run as Dataview JavaScript in a vault that has it enabled
+- The access token is only sent to an https server URL (or localhost)
