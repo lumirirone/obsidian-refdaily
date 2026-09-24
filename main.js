@@ -233,10 +233,20 @@ var import_obsidian4 = require("obsidian");
 
 // src/api.ts
 var import_obsidian2 = require("obsidian");
+function safeBaseUrl(raw) {
+  const url = (raw || "https://refdaily.com").trim().replace(/\/+$/, "");
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:") return url;
+    if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return url;
+  } catch {
+  }
+  return "https://refdaily.com";
+}
 var RefDailyApi = class {
   constructor(token, baseUrl) {
     this.token = token;
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.baseUrl = safeBaseUrl(baseUrl);
   }
   async request(path, params) {
     const url = new URL(`${this.baseUrl}${path}`);
@@ -338,30 +348,32 @@ function buildCitekey(authors, year) {
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 }
+var yaml = (value) => JSON.stringify(value == null ? "" : String(value));
+var inert = (text) => text.replace(/^(\s*)(```|~~~)/gm, "$1\\$2").replace(/`(\s*)\$=/g, "`$1\\$=");
 function paperTemplate(paper) {
   const citekey = buildCitekey(paper.authors, paper.year);
-  const authorsYaml = paper.authors.map((a) => `  - "${a}"`).join("\n");
-  const tagsYaml = paper.tags.map((t) => `  - "${t}"`).join("\n");
+  const authorsYaml = paper.authors.map((a) => `  - ${yaml(a)}`).join("\n");
+  const tagsYaml = paper.tags.map((t) => `  - ${yaml(t)}`).join("\n");
   const frontmatter = [
     "---",
     `type: paper`,
-    `title: "${paper.title.replace(/"/g, '\\"')}"`,
-    `citekey: "${citekey}"`,
+    `title: ${yaml(paper.title)}`,
+    `citekey: ${yaml(citekey)}`,
     `authors:`,
     authorsYaml || "  []",
     `year: ${paper.year ?? "null"}`,
-    `venue: "${paper.venue ?? ""}"`,
-    `doi: "${paper.doi ?? ""}"`,
-    `status: "${paper.readStatus}"`,
+    `venue: ${yaml(paper.venue)}`,
+    `doi: ${yaml(paper.doi)}`,
+    `status: ${yaml(paper.readStatus)}`,
     `quality_score: ${paper.qualityScore ?? "null"}`,
-    `venue_tier: "${paper.venueTier ?? ""}"`,
+    `venue_tier: ${yaml(paper.venueTier)}`,
     `citation_count: ${paper.citationCount}`,
     `tags:`,
     tagsYaml || "  []",
-    `refdaily_id: "${paper.id}"`,
-    `source: "${paper.source ?? ""}"`,
-    `summary_basis: "${paper.summaryBasis ?? ""}"`,
-    `date_added: "${paper.createdAt}"`,
+    `refdaily_id: ${yaml(paper.id)}`,
+    `source: ${yaml(paper.source)}`,
+    `summary_basis: ${yaml(paper.summaryBasis)}`,
+    `date_added: ${yaml(paper.createdAt)}`,
     "---"
   ].join("\n");
   const authorLine = paper.authors.length > 0 ? paper.authors.join(", ") : "Unknown";
@@ -378,10 +390,10 @@ function paperTemplate(paper) {
     "",
     "## Abstract",
     "",
-    paper.abstract ?? "_No abstract available._",
+    paper.abstract ? inert(paper.abstract) : "_No abstract available._",
     "",
     // Structured summary: insert raw markdown (already contains ## headers)
-    paper.summary ? paper.summary : [
+    paper.summary ? inert(paper.summary) : [
       "## \uC5F0\uAD6C \uBAA9\uC801 Research Objective",
       "- \uD575\uC2EC \uC9C8\uBB38: ",
       "- \uBC30\uACBD: ",

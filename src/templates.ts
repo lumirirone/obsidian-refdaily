@@ -34,31 +34,47 @@ function sanitizeFilename(name: string): string {
 
 // ── Paper Template ──
 
+/**
+ * A YAML scalar that cannot break out of its line. Values came in raw -
+ * `"${venue}"` - so a quote or a newline in an author, a tag or a venue
+ * (all of which can come from another user through a shared paper) could
+ * end the string and add keys of its own. A JSON string is valid YAML.
+ */
+const yaml = (value: unknown): string => JSON.stringify(value == null ? "" : String(value));
+
+/**
+ * Server text written into the note body, made inert. A fenced block such as
+ * ```dataviewjs, or inline `$= ...`, runs as code in a vault with Dataview
+ * JavaScript enabled, and a summary can come from someone else's paper.
+ */
+const inert = (text: string): string =>
+  text.replace(/^(\s*)(```|~~~)/gm, "$1\\$2").replace(/`(\s*)\$=/g, "`$1\\$=");
+
 export function paperTemplate(paper: SyncPaper): { filename: string; content: string } {
   const citekey = buildCitekey(paper.authors, paper.year);
-  const authorsYaml = paper.authors.map((a) => `  - "${a}"`).join("\n");
-  const tagsYaml = paper.tags.map((t) => `  - "${t}"`).join("\n");
+  const authorsYaml = paper.authors.map((a) => `  - ${yaml(a)}`).join("\n");
+  const tagsYaml = paper.tags.map((t) => `  - ${yaml(t)}`).join("\n");
 
   const frontmatter = [
     "---",
     `type: paper`,
-    `title: "${paper.title.replace(/"/g, '\\"')}"`,
-    `citekey: "${citekey}"`,
+    `title: ${yaml(paper.title)}`,
+    `citekey: ${yaml(citekey)}`,
     `authors:`,
     authorsYaml || "  []",
     `year: ${paper.year ?? "null"}`,
-    `venue: "${paper.venue ?? ""}"`,
-    `doi: "${paper.doi ?? ""}"`,
-    `status: "${paper.readStatus}"`,
+    `venue: ${yaml(paper.venue)}`,
+    `doi: ${yaml(paper.doi)}`,
+    `status: ${yaml(paper.readStatus)}`,
     `quality_score: ${paper.qualityScore ?? "null"}`,
-    `venue_tier: "${paper.venueTier ?? ""}"`,
+    `venue_tier: ${yaml(paper.venueTier)}`,
     `citation_count: ${paper.citationCount}`,
     `tags:`,
     tagsYaml || "  []",
-    `refdaily_id: "${paper.id}"`,
-    `source: "${paper.source ?? ""}"`,
-    `summary_basis: "${paper.summaryBasis ?? ""}"`,
-    `date_added: "${paper.createdAt}"`,
+    `refdaily_id: ${yaml(paper.id)}`,
+    `source: ${yaml(paper.source)}`,
+    `summary_basis: ${yaml(paper.summaryBasis)}`,
+    `date_added: ${yaml(paper.createdAt)}`,
     "---",
   ].join("\n");
 
@@ -82,11 +98,11 @@ export function paperTemplate(paper: SyncPaper): { filename: string; content: st
     "",
     "## Abstract",
     "",
-    paper.abstract ?? "_No abstract available._",
+    paper.abstract ? inert(paper.abstract) : "_No abstract available._",
     "",
     // Structured summary: insert raw markdown (already contains ## headers)
     paper.summary
-      ? paper.summary
+      ? inert(paper.summary)
       : [
           "## 연구 목적 Research Objective",
           "- 핵심 질문: ",

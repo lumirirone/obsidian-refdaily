@@ -50,13 +50,29 @@ export interface SyncStatus {
   reportCount: number;
 }
 
+/**
+ * The token is sent to this address, so it must be https - or a local
+ * development server. Anything else falls back to refdaily.com.
+ */
+export function safeBaseUrl(raw: string | undefined): string {
+  const url = (raw || "https://refdaily.com").trim().replace(/\/+$/, "");
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:") return url;
+    if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return url;
+  } catch {
+    /* fall through */
+  }
+  return "https://refdaily.com";
+}
+
 export class RefDailyApi {
   private token: string;
   private baseUrl: string;
 
   constructor(token: string, baseUrl: string) {
     this.token = token;
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.baseUrl = safeBaseUrl(baseUrl);
   }
 
   private async request<T>(path: string, params?: Record<string, string>): Promise<T> {
